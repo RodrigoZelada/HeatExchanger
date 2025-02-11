@@ -1,10 +1,3 @@
-//g++ MatrixBinaryPetsc.cpp -o MatrixBinaryPetsc -std=c++14 -larmadillo
-//./MatrixBinaryPetsc output/case3Vol
-//time ./MatrixBinaryPetsc output/case3Vol -ksp_view_mat ascii:A.txt -mat_view draw -draw_save
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -pc_type lu -pc_factor_mat_solver_type superlu_dist -ksp_monitor
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -ksp_type gmres -pc_type bjacobi -sub_pc_type ilu -ksp_monitor
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -ksp_type gmres -pc_type asm -sub_pc_type ilu -ksp_monitor
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
