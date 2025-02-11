@@ -11,9 +11,11 @@ Requirements:
   and then modify the lines
 
   shutil.copyfile(output+'/THot_64_0000_00.vtu',output+'/THot_'+itf+'.vtu')
+  
   shutil.copyfile(output+'/TCold_64_0000_00.vtu',output+'/TCold_'+itf+'.vtu')
 
   replacing 64 by the new number of lines and the 00.vtu by the new digit, for example if you use N=8, then it should read:
 
   shutil.copyfile(output+'/THot_8_0000_0.vtu',output+'/THot_'+itf+'.vtu')
+  
   shutil.copyfile(output+'/TCold_8_0000_0.vtu',output+'/TCold_'+itf+'.vtu')
