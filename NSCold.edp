@@ -1,0 +1,238 @@
+/*
+   Author(s): Johann Moulin <johann.moulin@onera.fr>
+              Pierre Jolivet <pierre@joliv.et>
+              Olivier Marquet <olivier.marquet@onera.fr>
+        Date: 2019-03-22
+
+   Copyright (C) 2019-     Office national d'études et de recherches aérospatiales
+                 2019-     Centre National de la Recherche Scientifique
+
+   This script is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+   If you use this script, you are kindly asked to cite the following article:
+
+   "Augmented Lagrangian Preconditioning for Large-Scale Hydrodynamic Stability",
+   J. Moulin, P. Jolivet, and O. Marquet (2019).
+ */
+
+load "PETSc"
+load "iovtk"
+load "medit"
+/*include "include/params.idp"*/
+macro trueRestrict()true//
+macro removeZeros()true//
+macro dimension()3//
+include "macro_ddm.idp"
+
+macro def(i)[i, i#B, i#C, i#D]//
+macro init(i)[i, i, i, i]//
+
+real gamma = getARGV("-gamma", 0.3);
+real nu = 1.; real Re = 1./nu;
+func Pk = [P2, P2, P2, P1];
+
+string output = getARGV("-output", "output");
+string MeshFileName = output + "/Thcold.mesh";
+/*include "include/params.idp"*/
+
+real tolNewton = getARGV("-Newton_tol", 1e-3);
+
+real time = mpiWtime();
+
+mesh3 Th = readmesh3(MeshFileName); // global mesh read on rank 0
+mesh3 ThGlobal = Th;
+int[int][int] intersection; // local-to-neighbors renumbering
+real[int] D;                // partition of unity
+int split = getARGV("-split", 1);              // refinement parameter
+//build(Th, split, intersection, D, Pk, mpiCommWorld)
+int[int] n2o;
+macro ThN2O() n2o //
+buildDmesh(Th)
+fespace Wh(Th, Pk); // complete space [u, v, w, p]
+fespace Qh(Th, P1); // pressure space for Schur complement
+
+Wh [uc1, uc2, uc3, pc];
+
+/*include "include/decomposition.idp"*/
+
+
+//[uc1, uc2, uc3, pc] = [0.,(0.25^2 - (x-0.5)^2 - (z-0.5)^2)/0.25^2,0.,0.];
+[uc1, uc2, uc3, pc] = [0.,(0.1^2 - (x-0.5)^2 - (z-0.5)^2)/0.01,0.,0.];
+
+/*include "include/decomposition.idp"*/
+
+/*include "include/varf.idp"*/
+macro grad(u)[dx(u), dy(u), dz(u)]//
+macro gradTx(u)[dx(u#1),dx(u#2),dx(u#3)]//
+macro gradTy(u)[dy(u#1),dy(u#2),dy(u#3)]//
+macro gradTz(u)[dz(u#1),dz(u#2),dz(u#3)]//
+macro div(u)(dx(u#1) + dy(u#2) + dz(u#3))//
+macro UgradV(u, v)[[u#1, u#2, u#3]' * [dx(v#1), dy(v#1), dz(v#1)],
+                   [u#1, u#2, u#3]' * [dx(v#2), dy(v#2), dz(v#2)],
+                   [u#1, u#2, u#3]' * [dx(v#3), dy(v#3), dz(v#3)]]//
+macro UgradVW(u, v, w)(u#1 * (dx(v#1) * w#1 + dx(v#2) * w#2 + dx(v#3) * w#3)
+                     + u#2 * (dy(v#1) * w#1 + dy(v#2) * w#2 + dy(v#3) * w#3)
+                     + u#3 * (dz(v#1) * w#1 + dz(v#2) * w#2 + dz(v#3) * w#3))//
+
+varf vJ([u1, u2, u3, p], [v1, v2, v3, q]) = int3d(Th)(UgradVW(uc, u, v) + UgradVW(u, uc, v)) //(UgradV(uc, u) + UgradV(u, uc))' * [v1, v2, v3]
+                                          + int3d(Th, qforder = 3)(
+                                            nu * (grad(u1)' * grad(v1) + gradTx(u)'*grad(v1)
+                                                  +grad(u2)' * grad(v2) + gradTy(u)'*grad(v2)
+                                                  +grad(u3)' * grad(v3) + gradTz(u)'*grad(v3) )
+                                          + (gamma * div(u) - p) * div(v)
+                                          - div(u) * q
+                                          )
+                                          +on(10,5,6,7,8,9,11,12,u1=uc1-0,u2=uc2-0,u3=uc3-0)
+                                          +on(1,u1=0,u2=0, u3=0);
+/*include "include/varf.idp"*/
+/*Not optimized but easier*/
+/*varf vRes([u1, u2, u3, p], [v1, v2, v3, q]) = int3d(Th)(
+      nu * (grad(uc1)' * grad(v1) + gradTx(uc)'*grad(v1)
+            +grad(uc2)' * grad(v2) + gradTy(uc)'*grad(v2)
+            +grad(uc3)' * grad(v3) + gradTz(uc)'*grad(v3) )
+    + UgradV(uc, uc)' * [v1, v2, v3]
+    - (pc - gamma * div(uc)) * div(v)
+    - div(uc) * q)*/
+/*Optimized*/
+varf vRes([u1, u2, u3, p], [v1, v2, v3, q]) = int3d(Th, qforder = 3)(
+      + dx(uc1) * ((2.*nu + gamma) * dx(v1)  + gamma * (dy(v2) + dz(v3)) - q)
+      + dy(uc1) * (nu * (dy(v1) + dx(v2))                                           )
+      + dz(uc1) * (nu * (dz(v1) + dx(v3))                                        )
+      + dx(uc2) * (nu * (dx(v2) + dy(v1))                                          )
+      + dy(uc2) * ((2.*nu + gamma) * dy(v2) + gamma * (dx(v1) + dz(v3)) - q)
+      + dz(uc2) * (nu * (dz(v2) + dy(v3))                                          )
+      + dx(uc3) * (nu * (dx(v3) + dz(v1))                                          )
+      + dy(uc3) * (nu * (dy(v3) + dz(v2))                                         )
+      + dz(uc3) * ((2.*nu + gamma) * dz(v3) + gamma * (dx(v1) + dy(v2)) - q)
+      -                                                                pc * (dx(v1) + dy(v2) + dz(v3))
+    )
+    + int3d(Th)(
+        dx(uc1) * (uc1 * v1)
+      + dy(uc1) * (uc2 * v1)
+      + dz(uc1) * (uc3 * v1)
+      + dx(uc2) * (uc1 * v2)
+      + dy(uc2) * (uc2 * v2)
+      + dz(uc2) * (uc3 * v2)
+      + dx(uc3) * (uc1 * v3)
+      + dy(uc3) * (uc2 * v3)
+      + dz(uc3) * (uc3 * v3)
+    )
+    +on(10,5,6,7,8,9,11,12,u1=uc1-0,u2=uc2-0,u3=uc3-0)
+    +on(1,u1=0,u2=0, u3=0);
+
+//Mat dJ(Wh.ndof, intersection, D); 
+Mat dJ; createMat(Th, dJ, Pk);
+
+/*include "include/fieldsplit.idp"*/
+/*# Fields #*/
+Wh [vX, vY, vZ, p] = [1, 2, 3, 4]; // numbering of each field
+string[int] names(4); // prefix of each field
+names[0] = "vX"; // %*\color{DarkGreen}{$x$}*)-velocity
+names[1] = "vY"; // %*\color{DarkGreen}{$y$}*)-velocity
+names[2] = "vZ"; // %*\color{DarkGreen}{$z$}*)-velocity
+names[3] = "p";  // pressure
+/*# EndFields #*/
+/*# Correspondance #*/
+Qh pIdx; // function from the pressure space
+pIdx[] = 1:pIdx[].n; // numbering of the unknowns of Qh
+// renumbering into the complete space by doing an interpolation on Wh
+Wh [listX, listY, listZ, listP] = [0, 0, 0, pIdx];
+/*# EndCorrespondance #*/
+/*include "include/fieldsplit.idp"*/
+
+/*# Schur #*/
+matrix[int] S(1); // array with a single matrix
+varf vSchur(p, q) = int3d(Th, qforder = 3)
+  (-1.0/(gamma + 1.0/Re) * p * q); // %*\color{DarkGreen}{\cref{eq:approximatedshurcomplement}}*) with %*\color{DarkGreen}{$s=0$}*)
+S[0] = vSchur(Qh, Qh); // matrix assembly
+/*# EndSchur #*/
+
+/*include "include/paramsXYZ.idp"*/
+/*# V #*/
+real tolV = getARGV("-velocity_tol", 1e-3); // default to %*\color{DarkGreen}{$10^{-1}$}*)
+// monodimensional velocity solver
+string paramsV = "-ksp_type gmres -ksp_pc_side right " +
+  "-ksp_rtol " + tolV + " -ksp_gmres_restart 50 -pc_type asm " +
+  "-pc_asm_overlap 1 -sub_pc_type lu -sub_pc_factor_mat_solver_type mumps";
+if(usedARGV("-st_ksp_converged_reason") == -1)
+    paramsV = paramsV ;
+/*# EndV #*/
+/*# XYZ #*/
+// each velocity component gets the same monodimensional solver 
+// defined by paramsV
+string paramsXYZ = "-prefix_push fieldsplit_vX_ " + paramsV + " -prefix_pop"
+                  + " -prefix_push fieldsplit_vY_ " + paramsV + " -prefix_pop"
+                  + " -prefix_push fieldsplit_vZ_ " + paramsV + " -prefix_pop";
+/*# EndXYZ #*/
+/*include "include/paramsXYZ.idp"*/
+/*# P #*/
+string paramsP = "-prefix_push fieldsplit_p_ " +
+  "-ksp_type cg -ksp_max_it 5 -pc_type jacobi -prefix_pop";
+/*# EndP #*/
+
+/*# Krylov #*/
+string paramsKrylov = "-ksp_type fgmres "
+  + " -ksp_rtol 1e-5 -ksp_gmres_restart 200";
+/*# EndKrylov #*/
+
+/*# AllParams #*/
+string params = paramsXYZ + " " + paramsP + " " + paramsKrylov +
+  " -pc_type fieldsplit -pc_fieldsplit_type multiplicative";
+/*# EndAllParams #*/
+
+set(dJ, sparams = params, fields = vX[], names = names, schurPreconditioner = S, schurList = listX[]);
+
+func real[int] funcRes(real[int]& inPETSc) {
+    changeNumbering(dJ, uc1[], inPETSc, inverse = true, exchange = true);
+    real[int] out(Wh.ndof);
+    out = vRes(0, Wh, tgv = -1);
+    real[int] outPETSc;
+    changeNumbering(dJ, out, outPETSc);
+    return outPETSc;
+}
+func int funcJ(real[int]& inPETSc) {
+    changeNumbering(dJ, uc1[], inPETSc, inverse = true, exchange = true);
+    matrix J = vJ(Wh, Wh, tgv = -1);
+    dJ = J;
+    return 0;
+}
+real[int] xPETSc;
+changeNumbering(dJ, uc1[], xPETSc);
+SNESSolve(dJ, funcJ, funcRes, xPETSc, sparams = "-snes_monitor -snes_linesearch_order 1 -snes_max_it 3 -snes_atol " + tolNewton);
+changeNumbering(dJ, uc1[], xPETSc, inverse = true);
+
+/*Local to global*/
+fespace WhGlobal(ThGlobal, [P2,P2,P2,P1]);
+WhGlobal [uxGlobal,uyGlobal,uzGlobal,pGlobal], [uxsum,uysum,uzsum,psum];
+int[int] subIdx = restrict(Wh, WhGlobal, n2o);
+uxGlobal[](subIdx) = uc1[]; //local function from #0 interpolated by 0, on the global domain
+
+//mpiAllReduce(uxGlobal[], uxsum[], mpiCommWorld, mpiSUM); //problem because of global elements => need to use partition of unity
+mpiReduce(uxGlobal[], uxsum[], processor(0, mpiCommWorld), mpiSUM); //problem because of global elements => need to use partition of unity
+
+if(mpirank == 0){
+  savevtk(output+"/uxCold.vtu",ThGlobal,[uxsum,uysum,uzsum]);
+  ofstream file(output+"/uxGlobalCold.gp");
+  file.precision(16);
+  file << uxsum[];
+
+  savesol(output+"/uxCold.sol",ThGlobal,uxsum);
+  savesol(output+"/uyCold.sol",ThGlobal,uysum);
+  savesol(output+"/uzCold.sol",ThGlobal,uzsum);
+
+  real maxDissCold = 5.;
+  real Dcold = int3d(ThGlobal)(nu * (grad(uxsum)' * grad(uxsum) + [dx(uxsum),dx(uysum),dx(uzsum)]'*grad(uxsum)
+                                    +grad(uysum)' * grad(uysum) + [dy(uxsum),dy(uysum),dy(uzsum)]'*grad(uysum)
+                                    +grad(uzsum)' * grad(uzsum) + [dz(uxsum),dz(uysum),dz(uzsum)]'*grad(uzsum) )) ;
+  cout << "Dcold = " << Dcold << endl;
+  {
+    ofstream f(output+"/Dcold.gp");
+    f.precision(16);
+    f << Dcold-maxDissCold << endl;
+  }
+}
+time = mpiWtime() - time;
+if(mpirank == 0) cout << " ### NSCold done in " << time << "s" << endl;
+

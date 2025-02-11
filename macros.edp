@@ -1,0 +1,79 @@
+/* Macros used throughout the code */
+
+/* Jacobian matrix */
+macro GRAD(u, v, w) [dx(u), dy(u), dz(u), dx(v), dy(v), dz(v), dx(w), dy(w), dz(w)] // EOM
+
+/* Matrix Multiplication */
+/*M = [M[0], M[1], M[2]
+       M[3], M[4], M[5]
+       M[6], M[7], M[8]] */
+/* [M1[0], M1[1], M1[2] *   [M2[0], M2[1], M2[2]
+    M1[3], M1[4], M1[5]      M2[3], M2[4], M2[5]
+    M1[6], M1[7], M1[8]]     M2[6], M2[7], M2[8]] 
+*/
+macro MatrixMult(M1,M2) [ [M1[0],M1[1],M1[2]]'*[M2[0],M2[3],M2[6]], 
+                          [M1[0],M1[1],M1[2]]'*[M2[1],M2[4],M2[7]], 
+                          [M1[0],M1[1],M1[2]]'*[M2[2],M2[5],M2[8]], 
+                          [M1[3],M1[4],M1[5]]'*[M2[0],M2[3],M2[6]], 
+                          [M1[3],M1[4],M1[5]]'*[M2[1],M2[4],M2[7]], 
+                          [M1[3],M1[4],M1[5]]'*[M2[2],M2[5],M2[8]],
+                          [M1[6],M1[7],M1[8]]'*[M2[0],M2[3],M2[6]], 
+                          [M1[6],M1[7],M1[8]]'*[M2[1],M2[4],M2[7]], 
+                          [M1[6],M1[7],M1[8]]'*[M2[2],M2[5],M2[8]]] //EOM
+
+macro GradMatrixMult(u,v) MatrixMult(GRAD(u[0],u[1],u[2]),GRAD(v[0],v[1],v[2])) //EOM
+
+/* Matrix by vector */
+/*macro MatrixByVector(M,v) [M[0]*v[0] + M[1]*v[1] + M[2]*v[2], M[3]*v[0] + M[4]*v[1] + M[5]*v[2], M[6]*v[0] + M[7]*v[1] + M[8]*v[2] ] //EOM*/
+macro MatrixByVector(M,v) [[M[0],M[1],M[2]]'*[v[0],v[1],v[2]], 
+                           [M[3],M[4],M[5]]'*[v[0],v[1],v[2]], 
+                           [M[6],M[7],M[8]]'*[v[0],v[1],v[2]] ] //EOM
+
+/* Sigma */
+macro SIGMA(mu, u,p) (2*mu*EPS(u[0],u[1],u[2]) - [p, 0, 0, 0, p, 0, 0, 0, p]) //EOM
+
+/* Jacobian matrix transpose */
+macro GRADT(u, v, w) [dx(u), dx(v), dx(w), dy(u), dy(v), dy(w), dz(u), dz(v), dz(w)] // EOM
+
+/* Strain tensor */
+macro EPS(u, v, w) (0.5*(GRAD(u,v,w) + GRADT(u,v,w))) // EOM
+
+/* (u \cdot \nabla) V */
+macro UgradV(u1,u2,u3,v1,v2,v3) [ [u1,u2,u3]'*[dx(v1),dy(v1),dz(v1)] , [u1,u2,u3]'*[dx(v2),dy(v2),dz(v2)], [u1,u2,u3]'*[dx(v3),dy(v3),dz(v3)]]// EOM
+
+/* Divergence of u */
+macro div(u, v, w) (dx(u)+dy(v)+dz(w)) // EOM
+
+/* Transpose of M */
+macro tr(M) M' //EOM
+
+/* u \cdot n for a vector function u=(u1,u2,u3) */
+macro dotN(u1,u2,u3) (u1*N.x+u2*N.y+u3*N.z) //EOM
+macro dot(u1,u2,u3,Nx,Ny,Nz) (u1*Nx+u2*Ny+u3*Nz) //EOM
+
+/* (Vector) gradient of a scale function u */
+macro grad(u) [dx(u), dy(u), dz(u)] // EOM
+
+/* (Scalar) normal derivative of a scalar function u */
+//macro gradN(u)  (grad(u)'*[N.x, N.y]) // EOM
+macro gradNN(u,Nx,Ny,Nz)  (grad(u)'*[Nx, Ny, Nz]) // EOM
+
+/*DIfferential geometry */
+
+//macro divtau(u,v) (div(u,v) - tr(MatrixByVector(GRADT(u,v),[N.x,N.y]))*[N.x,N.y] ) //EOM
+macro divtauN(u,v,w,Nx,Ny,Nz) (div(u,v,w) - tr(MatrixByVector(GRADT(u,v,w),[Nx,Ny,Nz]))*[Nx,Ny,Nz] ) //EOM
+
+//macro gradtau(u) (grad(u) - gradN(u)*[N.x,N.y]) //geometry
+macro gradtauN(u,Nx,Ny,Nz) (grad(u) - gradNN(u,Nx,Ny,Nz)*[Nx,Ny,Nz]) //geometry
+
+macro jumptau(u,v) (v - u) //EOM
+
+macro meantau(u,v) (0.5*v + 0.5*u) //EOM
+
+//macro gradtaumeantau(u,v) (0.5*gradtau(u) + 0.5*gradtau(v)) //EOM
+macro gradtaumeantauN(u,v,Nx,Ny,Nz) (0.5*gradtauN(u,Nx,Ny,Nz) + 0.5*gradtauN(v,Nx,Ny,Nz)) //EOM
+
+macro gradmean(u,v) (0.5*grad(u) + 0.5*grad(v)) //EOM
+
+//macro gradtaujumptau(u,v) (gradtau(v) - gradtau(u)) //EOM
+macro gradtaujumptauN(u,v,Nx,Ny,Nz) (gradtauN(v,Nx,Ny,Nz) - gradtauN(u,Nx,Ny,Nz)) //EOM
