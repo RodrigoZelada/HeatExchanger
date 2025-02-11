@@ -1,10 +1,3 @@
-//g++ MatrixBinaryPetsc.cpp -o MatrixBinaryPetsc -std=c++14 -larmadillo
-//./MatrixBinaryPetsc output/case3Vol
-//time ./MatrixBinaryPetsc output/case3Vol -ksp_view_mat ascii:A.txt -mat_view draw -draw_save
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -pc_type lu -pc_factor_mat_solver_type superlu_dist -ksp_monitor
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -ksp_type gmres -pc_type bjacobi -sub_pc_type ilu -ksp_monitor
-//time mpiexec -n 8 ./MatrixBinaryPetsc output/case3Vol -ksp_type gmres -pc_type asm -sub_pc_type ilu -ksp_monitor
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -68,7 +61,7 @@ int main(int argc, char ** argv) {
 	DirichletBC DBC2(Th2,lDBC2,nDBC2);
 
 	//only for Th2	
-	int count=0; //all the points that are in Th2, that belongs to a DBC in Th1
+	/*int count=0; //all the points that are in Th2, that belongs to a DBC in Th1
 	for (int i=0; i<Th2.nv; i++){
 		int i_global = localToGlobalVertices2[i]; 
 		if ( (DBC2.vertices[i][0] >=0 ) && (vectorGlobalVertices1[i_global] >= 0)){ //Th1 and Th2 share the vertex i
@@ -88,7 +81,7 @@ int main(int argc, char ** argv) {
 		}
 	}
 	DBC2.nvDBC += count; 
-	DBC2.nvNotDBC -= count;
+	DBC2.nvNotDBC -= count;*/
 
 	//Bijection between triangles at the interface: t <-> t_tilde //
 	//index triangle in Th1 || index triangle in Th2
@@ -182,10 +175,10 @@ int main(int argc, char ** argv) {
 				uh2[i] = T[Nv1+DBC2.vertices[i][0]]; 
             	uh1Global[localToGlobalVertices2[i]] = uh2[i]; uh2Global[localToGlobalVertices2[i]] = uh2[i];
 			}
-			if (DBC2.vertices[i][1] == 3){ //Dirichlet belonging to Th1
+			/*if (DBC2.vertices[i][1] == 3){ //Dirichlet belonging to Th1
 				uh2[i] = T1(Th2.vertices[i][0],Th2.vertices[i][1],Th2.vertices[i][2]);
             	uh1Global[localToGlobalVertices2[i]] = uh2[i]; uh2Global[localToGlobalVertices2[i]] = uh2[i];
-			}
+			}*/
 		}
 
         cout << "uh1,uh2 obtained" << endl;
