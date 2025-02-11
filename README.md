@@ -19,3 +19,6 @@ Requirements:
   shutil.copyfile(output+'/THot_8_0000_0.vtu',output+'/THot_'+itf+'.vtu')
   
   shutil.copyfile(output+'/TCold_8_0000_0.vtu',output+'/TCold_'+itf+'.vtu')
+
+The base used codes are cited in our article:
+F. Caubet, C. Conca, M. Dambrine, and R. Zelada. Shape optimization for heat exchangers with Ventcell conditions.
