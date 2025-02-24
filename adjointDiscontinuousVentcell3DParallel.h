@@ -41,7 +41,7 @@ void adjointDiscontinuousVentcell3D(Mat A, Vec b, mesh3D &Th, vector<double> &G,
 				coefii[k] = coef[n][4*i+k];
 				if (k<Th.d){gradii[k] = coefii[k];}
 			}
-			if (Th.tetrahedra[n][D+1] == region1){
+			if (region == region1){
 				iibelongDBC = DBC1.vertices[ii][1]; 
 				ii_global = DBC1.vertices[ii][0]; 
 			}
